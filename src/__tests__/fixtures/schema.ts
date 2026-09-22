@@ -172,6 +172,16 @@ const Query = new GraphQLObjectType({
         },
       },
     },
+    listMultiplier: {
+      type: new GraphQLList(Item),
+      args: {
+        ids: {
+          type: new GraphQLNonNull(
+            new GraphQLList(new GraphQLNonNull(GraphQLInt))
+          ),
+        },
+      },
+    },
     _service: { type: SDLInterface },
   }),
   interfaces: () => [NameInterface, UnionInterface],

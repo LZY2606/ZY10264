@@ -202,6 +202,33 @@ try {
 }
 ```
 
+## Proof tree
+
+To explain *why* a query was rejected, you can enable the optional proof tree. It is built
+during the same traversal as the numeric estimation and the total complexity is strictly
+reduced from it. When the option is disabled (the default), no persistent allocations are made.
+
+```javascript
+const complexity = getComplexity({
+  estimators: [simpleEstimator({ defaultComplexity: 1 })],
+  schema,
+  query,
+  proofTree: true,
+  onProofTree: (proofTree) => {
+    // One root per evaluated operation. Each proof node records the response
+    // path (aliases applied), the schema field identity, the estimator that
+    // produced the score, own/child cost, the list multiplier, directive
+    // decisions and the fragment origin. Interface/union nodes keep all
+    // concrete candidates plus the rationale for selecting the maximum.
+    console.log(JSON.stringify(proofTree, null, 2));
+  },
+});
+```
+
+When using the validation rule, pass `proofTree: true` in the rule options and read the
+`proofTree` property of the visitor. Sensitive variable values are never echoed: proof nodes
+only record the type used for coercion and a normalized numeric summary.
+
 ## Prior Art
 
 This project is inspired by the following prior projects:
