@@ -53,7 +53,15 @@ const rule = createComplexityRule({
   // Optional callback function to retrieve the determined query complexity
   // Will be invoked whether the query is rejected or not
   // This can be used for logging or to implement rate limiting
-  onComplete: (complexity: number) => {console.log('Determined query complexity: ', complexity)},
+  // When proofTree is enabled, the proof of the evaluated operation is passed
+  // as the second argument
+  onComplete: (complexity: number, proof?: OperationProof) => {console.log('Determined query complexity: ', complexity)},
+
+  // Collect a proof tree alongside the numeric complexity. The proof tree is
+  // built during the same traversal as the numeric estimation and explains
+  // which fragments, variables and abstract type branches contribute to the
+  // total. When disabled (the default), no proof objects are allocated.
+  proofTree: false,
 
   // Optional function to create a custom error
   createError: (max: number, actual: number) => {
@@ -124,8 +132,70 @@ type ComplexityEstimatorArgs = {
   context?: Record<string, any>;
 };
 
-type ComplexityEstimator = (options: ComplexityEstimatorArgs) => number | void;
+type ComplexityEstimator = (
+  options: ComplexityEstimatorArgs
+) => number | ComplexityEstimate | void;
 ```
+
+An estimator may either return a plain number (the total field complexity) or a
+structured `ComplexityEstimate` that additionally describes how the complexity
+is composed. The structured form is used by the proof tree (see below):
+
+```typescript
+type ComplexityEstimate = {
+  // The total field complexity (same value you would return as a plain number)
+  cost: number;
+  // Complexity of the field itself, excluding child selections
+  ownCost: number;
+  // Complexity contributed by child selections before multiplication
+  childCost: number;
+  // Product of all list multiplier factors applied to the field (default 1)
+  multiplier: number;
+  // Individual multiplier factors in estimator order
+  multiplierFactors?: ComplexityMultiplierFactor[];
+};
+```
+
+## Complexity Proof Tree
+
+When a query is rejected for being too complex, the numeric total alone does not
+explain where the cost comes from. Enable `proofTree` to collect a proof tree
+during the same traversal that computes the numeric complexity:
+
+```javascript
+import {
+  getComplexity,
+  reduceProofTree,
+  simpleEstimator,
+} from 'graphql-query-complexity';
+
+const complexity = getComplexity({
+  estimators: [simpleEstimator()],
+  schema,
+  query,
+  variables,
+  proofTree: true,
+  onComplete: (complexity, proof) => {
+    // proof.root is the proof tree of the evaluated operation.
+    // The tree strictly reduces to the numeric total:
+    console.assert(reduceProofTree(proof.root) === complexity);
+  },
+});
+```
+
+Every proof node records the response path (aliases are used as response keys,
+the schema field identity is never replaced by an alias), the field definition,
+the estimator that produced the score, own cost, child cost, the multiplier and
+its factors, the directive decisions (@skip/@include) and the nearest named
+fragment the node originates from. For interface and union selection sets, the
+proof keeps the totals of every concrete candidate type plus the selected
+maximum (`candidates`, `selectedType`), mirroring the numeric algorithm.
+
+The same fragment spread at two different response paths produces two
+occurrences in the tree, while the cycle guard still blocks recursive spreads
+based on the traversal stack. Variables that influenced the cost are recorded
+with their coercion type and a normalized numeric summary only — raw variable
+input values are never echoed into the proof.
 
 ## Usage with express-graphql
 
